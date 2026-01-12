@@ -8,19 +8,16 @@ Real Account List
 2.Nur Ahmad Syatir
 211120602
 211126397
-MT4
 31052905
 
 3.Syed Asraf Shafani Bin Syed Abuwalmaal
 623610
-MT4:
 50012670
 
 4.Muhammad Faiz Bin Muhammad Nasir
 20866288
 
 5.MD TALIB BIN ITHNIN
-MT4
 46139145
 
 6.Abd rahim
@@ -34,7 +31,7 @@ MT4
 
 9.Ahmad zulfahmi Bin Ahmad Nazari
 450227914
-
+50011935
 
 
 
