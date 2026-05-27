@@ -12,20 +12,19 @@ fetch("https://corsproxy.io/?" + encodeURIComponent(url))
   .then(r => r.text())
   .then(data => {
 
-    // extract all account ids
+    // find all account ids
     const matches = [...data.matchAll(/account id="(\d+)"/g)];
 
-    // remove first/main account if wanted
+    // remove first main account
     matches.shift();
 
-    // format output
-    let result = "account id:\n\n";
+    // only numbers output
+    const ids = matches.map(m => m[1]);
 
-    matches.forEach(m => {
-      result += m[1] + "\n";
-    });
+    // display nicely
+    document.getElementById("output").textContent =
+      "account ids\n" + ids.join("\n");
 
-    document.getElementById("output").textContent = result;
   })
   .catch(err => {
     document.getElementById("output").textContent = err;
