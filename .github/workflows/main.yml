@@ -5,6 +5,9 @@ on:
   schedule:
     - cron: "*/10 * * * *"
 
+permissions:
+  contents: write
+
 jobs:
   update:
     runs-on: ubuntu-latest
@@ -20,35 +23,35 @@ jobs:
 
       - name: Fetch and generate txt
         run: |
-          node <<EOF
-          const fs = require("fs");
+          node --input-type=module <<'EOF'
+          import fs from "fs";
 
-          async function run() {
-            const url = "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=afcca115f0b8e8bd";
+          const url = "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=afcca115f0b8e8bd";
 
-            const res = await fetch(url);
-            const text = await res.text();
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
 
-            const matches = [...text.matchAll(/account id="(\d+)"/g)];
+          const text = await res.text();
+          const matches = [...text.matchAll(/account id="(\d+)"/g)];
+          const ids = [...new Set(matches.map(x => x[1]))];
 
-            const ids = [...new Set(matches.map(x => x[1]))];
-
-            const output =
-`client:
-${ids.join("\n")}`;
-
-            fs.writeFileSync("roboforex.txt", output);
+          if (ids.length === 0) {
+            console.log("No IDs found. Response preview:", text.slice(0, 500));
+            process.exit(1);
           }
 
-          run();
+          const output = `client:\n${ids.join("\n")}`;
+          fs.writeFileSync("roboforex.txt", output);
+          console.log(`Written ${ids.length} IDs to roboforex.txt`);
           EOF
 
-      - name: Commit
+      - name: Commit and push
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
 
           git add roboforex.txt
-          git commit -m "update txt" || echo "no changes"
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
 
+          git commit -m "update roboforex IDs"
           git push
