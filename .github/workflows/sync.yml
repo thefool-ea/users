@@ -2,8 +2,8 @@ name: Sync RoboForex Referrals
 
 on:
   schedule:
-    - cron: '0 * * * *'  # runs every hour
-  workflow_dispatch:      # allows manual run
+    - cron: '0 * * * *'
+  workflow_dispatch:
 
 jobs:
   sync:
@@ -13,11 +13,7 @@ jobs:
 
       - name: Fetch and update referrals
         run: |
-          curl -s "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=afcca115f0b8e8bd" \
-          | grep -oP 'account id="\K[0-9]+' \
-          | tail -n +2 \
-          > ids.txt
-          
+          curl -s "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=afcca115f0b8e8bd" | grep -oP 'account id="\K[0-9]+' | tail -n +2 > ids.txt
           echo "client:" > roboforex.txt
           cat ids.txt >> roboforex.txt
 
