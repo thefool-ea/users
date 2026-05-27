@@ -1,0 +1,54 @@
+name: Update RoboForex IDs
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/10 * * * *"
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Fetch and generate txt
+        run: |
+          node <<EOF
+          const fs = require("fs");
+
+          async function run() {
+            const url = "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=afcca115f0b8e8bd";
+
+            const res = await fetch(url);
+            const text = await res.text();
+
+            const matches = [...text.matchAll(/account id="(\d+)"/g)];
+
+            const ids = [...new Set(matches.map(x => x[1]))];
+
+            const output =
+`client:
+${ids.join("\n")}`;
+
+            fs.writeFileSync("roboforex.txt", output);
+          }
+
+          run();
+          EOF
+
+      - name: Commit
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+
+          git add roboforex.txt
+          git commit -m "update txt" || echo "no changes"
+
+          git push
