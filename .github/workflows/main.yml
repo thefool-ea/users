@@ -1,0 +1,26 @@
+name: Sync RoboForex Referrals
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Fetch and update referrals
+        run: |
+          curl -s "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=afcca115f0b8e8bd" | grep -oP 'account id="\K[0-9]+' | tail -n +2 > ids.txt
+          echo "client:" > roboforex.txt
+          cat ids.txt >> roboforex.txt
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add roboforex.txt
+          git diff --cached --quiet || git commit -m "Auto sync referrals"
+          git push
