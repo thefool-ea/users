@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<body>
+
+<pre id="output">Loading...</pre>
+
+<script>
+fetch("https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=afcca115f0b8e8bd")
+  .then(r => r.text())
+  .then(data => {
+    document.getElementById("output").textContent = data;
+  })
+  .catch(err => {
+    document.getElementById("output").textContent = err;
+  });
+</script>
+
+</body>
+</html>
