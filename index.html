@@ -5,12 +5,27 @@
 <pre id="output">Loading...</pre>
 
 <script>
-const url = "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=afcca115f0b8e8bd";
+const url =
+"https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=afcca115f0b8e8bd";
 
 fetch("https://corsproxy.io/?" + encodeURIComponent(url))
   .then(r => r.text())
   .then(data => {
-    document.getElementById("output").textContent = data;
+
+    // extract all account ids
+    const matches = [...data.matchAll(/account id="(\d+)"/g)];
+
+    // remove first/main account if wanted
+    matches.shift();
+
+    // format output
+    let result = "account id:\n\n";
+
+    matches.forEach(m => {
+      result += m[1] + "\n";
+    });
+
+    document.getElementById("output").textContent = result;
   })
   .catch(err => {
     document.getElementById("output").textContent = err;
