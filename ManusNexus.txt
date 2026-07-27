@@ -20,7 +20,7 @@ Demo Accounts
 68255052
 
 /////////////
-Live Accounts
+Live Accounts or Paid
 CVHZZ
 37354090
 37381597
@@ -31,3 +31,6 @@ CVHZZ
 
 CXM
 628114
+
+VALETAX
+471053332
