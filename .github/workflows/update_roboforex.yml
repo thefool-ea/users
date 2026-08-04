@@ -23,47 +23,45 @@ jobs:
           ALL_IDS=""
 
           echo "🔄 Starting RoboForex API fetch..."
-          
-          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-            echo "Attempt $((RETRY_COUNT + 1))/$MAX_RETRIES..."
-            
-            IDS_RAW=$(curl -s -H "User-Agent: GitHub-Actions-Bot" "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=$API_KEY&limit=9999" | grep -oE 'id[=": ]*[0-9]+' | sed 's/id[=": ]*//g' || true)
-            
-            if [ -n "$IDS_RAW" ]; then
-              ALL_IDS="$IDS_RAW"
-              echo "✅ Successfully fetched IDs at once"
-              break
-            fi
-            
-            RETRY_COUNT=$((RETRY_COUNT + 1))
-            if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
-              echo "⏳ Attempt failed, retrying in 5 seconds..."
-              sleep 5
-            fi
-          done
 
-          # Fallback: Pagination loop
-          if [ -z "$ALL_IDS" ]; then
-            echo "⚠️ Attempt 1 failed. Trying pagination loop..."
+          # ❌ REMOVED the single limit=9999 attempt.
+          # ✅ Now we ALWAYS use pagination to ensure ALL pages are fetched.
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            echo "Attempt $((RETRY_COUNT + 1))/$MAX_RETRIES - Iterating pages..."
+            
             PAGE=1
             while true; do
               IDS_PAGE=$(curl -s -H "User-Agent: GitHub-Actions-Bot" "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=$API_KEY&page=$PAGE&limit=100" | grep -oE 'id[=": ]*[0-9]+' | sed 's/id[=": ]*//g' || true)
               
+              # Break if no IDs found (we've reached the last page)
               if [ -z "$IDS_PAGE" ]; then
                 break
               fi
               
+              # Append to total list
               if [ -n "$ALL_IDS" ]; then
                 ALL_IDS="${ALL_IDS}\n${IDS_PAGE}"
               else
                 ALL_IDS="$IDS_PAGE"
               fi
+              
               PAGE=$((PAGE + 1))
             done
-          fi
+            
+            # If we successfully fetched ANY IDs, break the retry loop
+            if [ -n "$ALL_IDS" ]; then
+              echo "✅ Successfully fetched all client IDs across $((PAGE - 1)) pages."
+              break
+            fi
+            
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+              echo "⏳ Fetch failed, retrying in 5 seconds..."
+              sleep 5
+            fi
+          done
 
-          # 🚨 CHANGED HERE: Removed 'sort -u' and replaced with 'awk'.
-          # This keeps duplicates out, but PRESERVES the exact API order.
+          # ✅ Keeps exact API order, removes duplicates, and includes 30281784
           ALL_IDS=$(echo -e "$ALL_IDS" | sed '/^$/d' | awk '!seen[$0]++')
 
           if [ -z "$ALL_IDS" ]; then
