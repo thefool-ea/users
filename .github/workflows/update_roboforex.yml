@@ -20,16 +20,19 @@ jobs:
           API_KEY="${{ secrets.ROBOFOREX_API_KEY }}"
           MAX_RETRIES=3
           RETRY_COUNT=0
-          
+          ALL_IDS=""
+
           echo "🔄 Starting RoboForex API fetch..."
           
           while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
             echo "Attempt $((RETRY_COUNT + 1))/$MAX_RETRIES..."
             
-            IDS_RAW=$(curl -s -H "User-Agent: GitHub-Actions-Bot" "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=$API_KEY" | grep -oP 'account id="\K[0-9]+')
+            # FIXED: sed removes 'id' AND the separators, leaving only numbers
+            IDS_RAW=$(curl -s -H "User-Agent: GitHub-Actions-Bot" "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=$API_KEY&limit=9999" | grep -oE 'id[=": ]*[0-9]+' | sed 's/id[=": ]*//g' || true)
             
             if [ -n "$IDS_RAW" ]; then
-              echo "✅ Successfully fetched IDs"
+              ALL_IDS="$IDS_RAW"
+              echo "✅ Successfully fetched IDs at once"
               break
             fi
             
@@ -39,23 +42,47 @@ jobs:
               sleep 5
             fi
           done
-          
-          if [ -z "$IDS_RAW" ]; then
-            echo "❌ Error: Failed to fetch RoboForex IDs after $MAX_RETRIES attempts"
+
+          # Fallback: Pagination loop
+          if [ -z "$ALL_IDS" ]; then
+            echo "⚠️ Attempt 1 failed. Trying pagination loop..."
+            PAGE=1
+            while true; do
+              # FIXED: sed removes 'id' AND the separators here too
+              IDS_PAGE=$(curl -s -H "User-Agent: GitHub-Actions-Bot" "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=$API_KEY&page=$PAGE&limit=100" | grep -oE 'id[=": ]*[0-9]+' | sed 's/id[=": ]*//g' || true)
+              
+              if [ -z "$IDS_PAGE" ]; then
+                break
+              fi
+              
+              if [ -n "$ALL_IDS" ]; then
+                ALL_IDS="${ALL_IDS}\n${IDS_PAGE}"
+              else
+                ALL_IDS="$IDS_PAGE"
+              fi
+              PAGE=$((PAGE + 1))
+            done
+          fi
+
+          # Clean up: Remove the parent account ID (if accidentally grabbed) and deduplicate
+          ALL_IDS=$(echo -e "$ALL_IDS" | sed '/^30281784$/d' | sed '/^$/d' | sort -u)
+
+          if [ -z "$ALL_IDS" ]; then
+            echo "❌ Error: Failed to fetch RoboForex IDs after all attempts. Check your API key secret!"
             exit 1
           fi
-          
-          ID_COUNT=$(echo "$IDS_RAW" | wc -l)
-          echo "📊 Found $ID_COUNT client IDs"
-          
+
+          ID_COUNT=$(echo "$ALL_IDS" | wc -l)
+          echo "📊 Found $ID_COUNT client IDs in total"
+
           echo "ID_LIST<<EOF" >> $GITHUB_ENV
-          echo "$IDS_RAW" >> $GITHUB_ENV
+          echo "$ALL_IDS" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
       - name: Update the text file
         run: |
           FILE_PATH="ManusNexus.txt"
-          TIMESTAMP=$(TZ='Asia/Bangkok' date '+%Y-%m-%d %I:%M:%S %p')
+          TIMESTAMP=$(TZ='Asia/Bangkok' date '+%Y-%m-%d %H:%M:%S')
           
           if [ ! -f "$FILE_PATH" ]; then
             echo "Error: $FILE_PATH does not exist!"
@@ -64,17 +91,17 @@ jobs:
           
           echo "📝 Updating $FILE_PATH..."
           
-          # Extract everything BEFORE "Auto Update Roboforex Clients:"
-          head -n $(grep -n "Auto Update Roboforex Clients:" $FILE_PATH | cut -d: -f1) $FILE_PATH > temp.txt
+          # Preserve everything above "Auto Update"
+          awk '/Auto Update Roboforex Clients:/ {exit} {print}' $FILE_PATH > temp.txt
           
-          # Add the new IDs with timestamp
+          # Append new block
+          echo "" >> temp.txt
+          echo "Auto Update Roboforex Clients:" >> temp.txt
           echo "" >> temp.txt
           echo "# Last updated: $TIMESTAMP" >> temp.txt
           echo "${{ env.ID_LIST }}" >> temp.txt
           
-          # Replace original file
           mv temp.txt $FILE_PATH
-          
           echo "✅ File updated successfully"
 
       - name: Commit changes
@@ -87,13 +114,10 @@ jobs:
         if: success()
         run: |
           echo "✅ Workflow completed successfully!"
-          echo "📊 Updated Roboforex client IDs list"
           echo "🔗 View file: https://github.com/thefool-ea/users/blob/main/ManusNexus.txt"
 
       - name: Notify on failure
         if: failure()
         run: |
           echo "❌ Workflow failed!"
-          echo "⚠️ RoboForex API update did not complete"
-          echo "🔗 Check logs: https://github.com/thefool-ea/users/actions"
           exit 1
