@@ -22,35 +22,21 @@ jobs:
           ALL_IDS_FILE="all_ids.txt"
           touch "$ALL_IDS_FILE"
           
-          PAGE=1
-          echo "🔄 Starting deep fetch (paginated)..."
+          echo "🔄 Fetching all clients using bulk strategy..."
           
-          while true; do
-            echo "Fetching page $PAGE..."
-            # Fetch current page
-            RESPONSE=$(curl -s -H "User-Agent: Mozilla/5.0" "https://my.roboforex.com/api/partners/tree?account_id=$MASTER_ID&api_key=$API_KEY&page=$PAGE&limit=100")
-            
-            # Extract IDs and CLEAN them immediately
-            IDS_PAGE=$(echo "$RESPONSE" | grep -oE 'id[=": ]*[0-9]+' | tr -d '\r' | grep -oE '[0-9]+' || true)
-            
-            if [ -z "$IDS_PAGE" ]; then
-              echo "✅ No more IDs found after page $((PAGE - 1))."
-              break
-            fi
-            
-            # Check if we've seen these IDs before (end of list)
-            FIRST_ID=$(echo "$IDS_PAGE" | head -n 1)
-            if grep -qF "$FIRST_ID" "$ALL_IDS_FILE" 2>/dev/null && [ $PAGE -gt 1 ]; then
-              echo "✅ Reached the end of unique IDs."
-              break
-            fi
-            
-            echo "$IDS_PAGE" >> "$ALL_IDS_FILE"
-            
-            # Safety break for very large lists
-            if [ $PAGE -ge 100 ]; then break; fi
-            PAGE=$((PAGE + 1))
-          done
+          # Strategy: Try the 'clients' endpoint first with a huge limit
+          # This is the most reliable way to get all 65+ IDs in one go.
+          RESPONSE=$(curl -s -H "User-Agent: Mozilla/5.0" "https://my.roboforex.com/api/partners/clients?account_id=$MASTER_ID&api_key=$API_KEY&limit=5000")
+          
+          # Extract IDs and CLEAN them
+          echo "$RESPONSE" | grep -oE 'id[=": ]*[0-9]+' | tr -d '\r' | grep -oE '[0-9]+' >> "$ALL_IDS_FILE" || true
+          
+          # Fallback: If 'clients' was empty, try 'tree' with a huge limit
+          if [ ! -s "$ALL_IDS_FILE" ]; then
+             echo "⚠️ 'clients' was empty, trying 'tree'..."
+             RESPONSE=$(curl -s -H "User-Agent: Mozilla/5.0" "https://my.roboforex.com/api/partners/tree?account_id=$MASTER_ID&api_key=$API_KEY&limit=5000")
+             echo "$RESPONSE" | grep -oE 'id[=": ]*[0-9]+' | tr -d '\r' | grep -oE '[0-9]+' >> "$ALL_IDS_FILE" || true
+          fi
 
           # Final cleaning:
           # 1. Add Master ID
@@ -94,5 +80,5 @@ jobs:
       - name: Commit changes
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "Auto-update: Found ${{ env.ID_COUNT }} clients (Formatting Fixed)"
+          commit_message: "Auto-update: Found ${{ env.ID_COUNT }} clients (Clean & Full List)"
           file_pattern: ManusNexus.txt
