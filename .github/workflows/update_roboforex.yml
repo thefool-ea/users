@@ -23,31 +23,26 @@ jobs:
           CLEAN_IDS="clean_ids.txt"
           touch "$CLEAN_IDS"
           
-          echo "🔄 Attempting to fetch all clients..."
+          echo "🔄 Fetching all clients..."
           
-          # Strategy 1: Try the 'clients' endpoint (best for flat lists of all referrals)
-          # We use a large limit to get everything in one go if possible
-          curl -s -H "User-Agent: Mozilla/5.0" "https://my.roboforex.com/api/partners/clients?account_id=$MASTER_ID&api_key=$API_KEY&limit=5000" > "$TEMP_FILE"
+          # Fetch using the most reliable endpoint
+          curl -s -H "User-Agent: Mozilla/5.0" "https://my.roboforex.com/api/partners/tree?account_id=$MASTER_ID&api_key=$API_KEY&limit=5000" > "$TEMP_FILE"
           
-          # Extract IDs from the response
-          grep -oE 'id[=": ]*[0-9]+' "$TEMP_FILE" | grep -oE '[0-9]+' >> "$CLEAN_IDS" || true
+          # Extract IDs and CLEAN them:
+          # 1. grep finds the ID pattern
+          # 2. tr -d '\r' removes hidden Windows-style line breaks (the "huge space" cause)
+          # 3. grep -oE '[0-9]+' extracts just the numbers
+          grep -oE 'id[=": ]*[0-9]+' "$TEMP_FILE" | tr -d '\r' | grep -oE '[0-9]+' >> "$CLEAN_IDS" || true
           
-          # Strategy 2: If 'clients' was empty, fall back to 'tree' but with a large limit
-          if [ ! -s "$CLEAN_IDS" ]; then
-            echo "⚠️ 'clients' endpoint returned no IDs, falling back to 'tree'..."
-            curl -s -H "User-Agent: Mozilla/5.0" "https://my.roboforex.com/api/partners/tree?account_id=$MASTER_ID&api_key=$API_KEY&limit=5000" > "$TEMP_FILE"
-            grep -oE 'id[=": ]*[0-9]+' "$TEMP_FILE" | grep -oE '[0-9]+' >> "$CLEAN_IDS" || true
-          fi
-
           # Final processing:
-          # 1. Add Master ID
-          # 2. Remove duplicates
-          # 3. Remove empty lines
-          # 4. Sort numerically
-          (echo "$MASTER_ID"; cat "$CLEAN_IDS") | sed '/^$/d' | sort -u -n > final_ids.txt
+          # - Add Master ID
+          # - Remove duplicates
+          # - Remove ALL blank lines
+          # - Sort numerically
+          (echo "$MASTER_ID"; cat "$CLEAN_IDS") | tr -d '\r' | sed '/^$/d' | sort -u -n > final_ids.txt
           
           ID_COUNT=$(wc -l < final_ids.txt)
-          echo "📊 Total unique IDs found: $ID_COUNT"
+          echo "📊 Found $ID_COUNT unique IDs"
           echo "ID_COUNT=$ID_COUNT" >> $GITHUB_ENV
 
       - name: Update the text file
@@ -55,17 +50,20 @@ jobs:
           FILE_PATH="ManusNexus.txt"
           TIMESTAMP=$(TZ='Asia/Bangkok' date '+%Y-%m-%d %I:%M:%S %p')
           
+          # Create file if it doesn't exist
           if [ ! -f "$FILE_PATH" ]; then
             echo "Auto Update Roboforex Clients:" > "$FILE_PATH"
           fi
           
+          # CLEAN THE FILE FIRST: Remove any existing \r characters from the whole file
+          tr -d '\r' < "$FILE_PATH" > temp_clean.txt && mv temp_clean.txt "$FILE_PATH"
+          
           echo "📝 Updating $FILE_PATH..."
           
-          # Remove the old "Auto Update" section if it exists
-          # This command deletes from the marker to the end of file
+          # Delete everything from the "Auto Update" marker to the end
           sed -i '/Auto Update Roboforex Clients:/,$d' "$FILE_PATH"
           
-          # Append the new section
+          # Append the new clean section
           {
             echo "Auto Update Roboforex Clients:"
             echo ""
@@ -78,9 +76,5 @@ jobs:
       - name: Commit changes
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "Auto-update: Found ${{ env.ID_COUNT }} RoboForex clients"
+          commit_message: "Auto-update: Found ${{ env.ID_COUNT }} clients (Clean Formatting)"
           file_pattern: ManusNexus.txt
-
-      - name: Notify on success
-        if: success()
-        run: echo "✅ Done! ${{ env.ID_COUNT }} IDs saved to ManusNexus.txt"
