@@ -55,7 +55,7 @@ jobs:
       - name: Update the text file
         run: |
           FILE_PATH="ManusNexus.txt"
-          TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+          TIMESTAMP=$(TZ='Asia/Bangkok' date '+%Y-%m-%d %H:%M:%S')
           
           if [ ! -f "$FILE_PATH" ]; then
             echo "Error: $FILE_PATH does not exist!"
