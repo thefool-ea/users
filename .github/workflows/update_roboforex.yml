@@ -1,1 +1,46 @@
+name: Auto Update Roboforex Clients
 
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+jobs:
+  update-list:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Fetch and parse RoboForex IDs
+        id: get_ids
+        run: |
+          # REPLACE 'YOUR_NEW_API_KEY' WITH YOUR NEW KEY BELOW
+          IDs=$(curl -s "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=YOUR_NEW_API_KEY" | grep -oP 'id="\K\d+')
+          
+          echo "ID_LIST<<EOF" >> $GITHUB_ENV
+          echo "$IDs" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Update the text file
+        run: |
+          # This is the path to your text file
+          FILE_PATH="users/ManusNexus.txt"
+          
+          # Update the file (removes old IDs below the marker, keeps the marker)
+          sed -i '/Auto Update Roboforex Clients:/,$ {
+            /Auto Update Roboforex Clients:/b
+            /^$/b
+            s/.*//g
+          }' $FILE_PATH
+          
+          # Write the new IDs immediately below the marker
+          echo "${{ env.ID_LIST }}" >> $FILE_PATH
+
+      - name: Commit changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Auto-update Roboforex client IDs"
+          file_pattern: users/ManusNexus.txt
