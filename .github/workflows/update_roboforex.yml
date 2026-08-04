@@ -17,26 +17,35 @@ jobs:
       - name: Fetch and parse RoboForex IDs
         id: get_ids
         run: |
-          # REPLACE 'YOUR_NEW_API_KEY' WITH YOUR NEW KEY BELOW
-          IDs=$(curl -s "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=afcca115f0b8e8bd | grep -oP 'id="\K\d+')
+          # THIS IS YOUR REVOKED KEY, CHANGE IT WHEN YOU GET A NEW ONE
+          API_KEY="afcca115f0b8e8bd"
+          
+          # Safely fetch IDs using a compatible extraction method
+          IDS_RAW=$(curl -s "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=$API_KEY" | grep -o 'id="[0-9]*"' | sed 's/id="//;s/"//')
           
           echo "ID_LIST<<EOF" >> $GITHUB_ENV
-          echo "$IDs" >> $GITHUB_ENV
+          echo "$IDS_RAW" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
       - name: Update the text file
         run: |
-          # FIXED THE PATH HERE: It's just "ManusNexus.txt" now!
           FILE_PATH="ManusNexus.txt"
           
-          # Update the file (removes old IDs below the marker, keeps the marker)
+          # Check if the file exists so it doesn't crash
+          if [ ! -f "$FILE_PATH" ]; then
+            echo "Error: $FILE_PATH does not exist!"
+            exit 1
+          fi
+          
+          # Add a "set +e" to prevent crashing if the marker isn't found yet
+          set +e
           sed -i '/Auto Update Roboforex Clients:/,$ {
             /Auto Update Roboforex Clients:/b
-            /^$/b
             s/.*//g
           }' $FILE_PATH
           
-          # Write the new IDs immediately below the marker
+          # Add a new line and the new IDs to the bottom of the file
+          echo "" >> $FILE_PATH
           echo "${{ env.ID_LIST }}" >> $FILE_PATH
 
       - name: Commit changes
