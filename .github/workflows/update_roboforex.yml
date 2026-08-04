@@ -27,7 +27,6 @@ jobs:
           while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
             echo "Attempt $((RETRY_COUNT + 1))/$MAX_RETRIES..."
             
-            # FIXED: sed removes 'id' AND the separators, leaving only numbers
             IDS_RAW=$(curl -s -H "User-Agent: GitHub-Actions-Bot" "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=$API_KEY&limit=9999" | grep -oE 'id[=": ]*[0-9]+' | sed 's/id[=": ]*//g' || true)
             
             if [ -n "$IDS_RAW" ]; then
@@ -48,7 +47,6 @@ jobs:
             echo "⚠️ Attempt 1 failed. Trying pagination loop..."
             PAGE=1
             while true; do
-              # FIXED: sed removes 'id' AND the separators here too
               IDS_PAGE=$(curl -s -H "User-Agent: GitHub-Actions-Bot" "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=$API_KEY&page=$PAGE&limit=100" | grep -oE 'id[=": ]*[0-9]+' | sed 's/id[=": ]*//g' || true)
               
               if [ -z "$IDS_PAGE" ]; then
@@ -82,7 +80,8 @@ jobs:
       - name: Update the text file
         run: |
           FILE_PATH="ManusNexus.txt"
-          TIMESTAMP=$(TZ='Asia/Bangkok' date '+%Y-%m-%d %H:%M:%S')
+          # CHANGED: %I for 12-hour clock, %p for AM/PM
+          TIMESTAMP=$(TZ='Asia/Bangkok' date '+%Y-%m-%d %I:%M:%S %p')
           
           if [ ! -f "$FILE_PATH" ]; then
             echo "Error: $FILE_PATH does not exist!"
@@ -107,7 +106,7 @@ jobs:
       - name: Commit changes
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "Auto-update Roboforex client IDs - $(date '+%Y-%m-%d %H:%M:%S')"
+          commit_message: "Auto-update Roboforex client IDs - $(date '+%Y-%m-%d %I:%M:%S %p')"
           file_pattern: ManusNexus.txt
 
       - name: Notify on success
