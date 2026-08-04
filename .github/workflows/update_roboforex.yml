@@ -2,7 +2,7 @@ name: Auto Update Roboforex Clients
 
 on:
   schedule:
-    - cron: '0 * * * *' # Updated to run every hour instead of every minute to be safe
+    - cron: '0 * * * *' # Runs every hour
   workflow_dispatch:
 
 jobs:
@@ -19,47 +19,35 @@ jobs:
         run: |
           API_KEY="${{ secrets.ROBOFOREX_API_KEY }}"
           MASTER_ID="30281784"
-          ALL_IDS_FILE="all_ids.txt"
-          touch "$ALL_IDS_FILE"
+          TEMP_FILE="raw_response.txt"
+          CLEAN_IDS="clean_ids.txt"
+          touch "$CLEAN_IDS"
           
-          PAGE=1
-          echo "🔄 Starting robust fetch..."
+          echo "🔄 Attempting to fetch all clients..."
           
-          while true; do
-            echo "Fetching page $PAGE..."
-            # Using a more robust double-grep to ensure we get clean digits only
-            # We try 'partners/clients' first as it is the standard for flat lists
-            # If that fails, it falls back to 'partners/tree'
-            RESPONSE=$(curl -s -H "User-Agent: Mozilla/5.0" "https://my.roboforex.com/api/partners/tree?account_id=$MASTER_ID&api_key=$API_KEY&page=$PAGE&limit=100")
-            
-            # Extract IDs: matches 'id="12345"' or '"id":12345' and then pulls just the digits
-            IDS_PAGE=$(echo "$RESPONSE" | grep -oE 'id[=": ]*[0-9]+' | grep -oE '[0-9]+' || true)
-            
-            if [ -z "$IDS_PAGE" ]; then
-              echo "✅ No more IDs found on page $PAGE."
-              break
-            fi
-            
-            # Check if we got the same IDs as before (pagination end)
-            if grep -qF "$(echo "$IDS_PAGE" | head -n 1)" "$ALL_IDS_FILE" 2>/dev/null && [ $PAGE -gt 1 ]; then
-              echo "✅ Reached the end of unique IDs."
-              break
-            fi
-            
-            echo "$IDS_PAGE" >> "$ALL_IDS_FILE"
-            
-            # Safety break to prevent infinite loops
-            if [ $PAGE -ge 50 ]; then break; fi
-            PAGE=$((PAGE + 1))
-          done
+          # Strategy 1: Try the 'clients' endpoint (best for flat lists of all referrals)
+          # We use a large limit to get everything in one go if possible
+          curl -s -H "User-Agent: Mozilla/5.0" "https://my.roboforex.com/api/partners/clients?account_id=$MASTER_ID&api_key=$API_KEY&limit=5000" > "$TEMP_FILE"
+          
+          # Extract IDs from the response
+          grep -oE 'id[=": ]*[0-9]+' "$TEMP_FILE" | grep -oE '[0-9]+' >> "$CLEAN_IDS" || true
+          
+          # Strategy 2: If 'clients' was empty, fall back to 'tree' but with a large limit
+          if [ ! -s "$CLEAN_IDS" ]; then
+            echo "⚠️ 'clients' endpoint returned no IDs, falling back to 'tree'..."
+            curl -s -H "User-Agent: Mozilla/5.0" "https://my.roboforex.com/api/partners/tree?account_id=$MASTER_ID&api_key=$API_KEY&limit=5000" > "$TEMP_FILE"
+            grep -oE 'id[=": ]*[0-9]+' "$TEMP_FILE" | grep -oE '[0-9]+' >> "$CLEAN_IDS" || true
+          fi
 
-          # Add the master ID, remove duplicates, and remove empty lines
-          (echo "$MASTER_ID"; cat "$ALL_IDS_FILE") | sed '/^$/d' | sort -u > final_ids.txt
+          # Final processing:
+          # 1. Add Master ID
+          # 2. Remove duplicates
+          # 3. Remove empty lines
+          # 4. Sort numerically
+          (echo "$MASTER_ID"; cat "$CLEAN_IDS") | sed '/^$/d' | sort -u -n > final_ids.txt
           
           ID_COUNT=$(wc -l < final_ids.txt)
-          echo "📊 Found $ID_COUNT client IDs in total"
-          
-          # Store in a file to avoid environment variable size limits
+          echo "📊 Total unique IDs found: $ID_COUNT"
           echo "ID_COUNT=$ID_COUNT" >> $GITHUB_ENV
 
       - name: Update the text file
@@ -73,10 +61,11 @@ jobs:
           
           echo "📝 Updating $FILE_PATH..."
           
-          # Preserve everything above the update block
+          # Remove the old "Auto Update" section if it exists
+          # This command deletes from the marker to the end of file
           sed -i '/Auto Update Roboforex Clients:/,$d' "$FILE_PATH"
           
-          # Append the new data
+          # Append the new section
           {
             echo "Auto Update Roboforex Clients:"
             echo ""
@@ -89,9 +78,9 @@ jobs:
       - name: Commit changes
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "Auto-update Roboforex client IDs (${{ env.ID_COUNT }} clients) - $(date '+%Y-%m-%d %I:%M:%S %p')"
+          commit_message: "Auto-update: Found ${{ env.ID_COUNT }} RoboForex clients"
           file_pattern: ManusNexus.txt
 
       - name: Notify on success
         if: success()
-        run: echo "✅ Workflow completed successfully! Found ${{ env.ID_COUNT }} IDs."
+        run: echo "✅ Done! ${{ env.ID_COUNT }} IDs saved to ManusNexus.txt"
