@@ -20,16 +20,18 @@ jobs:
           API_KEY="${{ secrets.ROBOFOREX_API_KEY }}"
           MAX_RETRIES=3
           RETRY_COUNT=0
-          
+          ALL_IDS=""
+
           echo "🔄 Starting RoboForex API fetch..."
           
+          # Attempt 1: Try to fetch all at once with a massive limit
           while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
             echo "Attempt $((RETRY_COUNT + 1))/$MAX_RETRIES..."
-            
-            IDS_RAW=$(curl -s -H "User-Agent: GitHub-Actions-Bot" "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=$API_KEY" | grep -o 'id="[0-9]*"' | sed 's/id="//;s/"//')
+            IDS_RAW=$(curl -s -H "User-Agent: GitHub-Actions-Bot" "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=$API_KEY&limit=9999" | grep -o 'id="[0-9]*"' | sed 's/id="//;s/"//')
             
             if [ -n "$IDS_RAW" ]; then
-              echo "✅ Successfully fetched IDs"
+              ALL_IDS="$IDS_RAW"
+              echo "✅ Successfully fetched IDs at once"
               break
             fi
             
@@ -39,17 +41,42 @@ jobs:
               sleep 5
             fi
           done
-          
-          if [ -z "$IDS_RAW" ]; then
-            echo "❌ Error: Failed to fetch RoboForex IDs after $MAX_RETRIES attempts"
+
+          # Attempt 2: If high limit didn't work, pagination loop safety net
+          if [ -z "$ALL_IDS" ]; then
+            echo "⚠️ High limit failed. Falling back to pagination loop..."
+            PAGE=1
+            while true; do
+              IDS_PAGE=$(curl -s -H "User-Agent: GitHub-Actions-Bot" "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=$API_KEY&page=$PAGE&limit=100" | grep -o 'id="[0-9]*"' | sed 's/id="//;s/"//')
+              
+              if [ -z "$IDS_PAGE" ]; then
+                break
+              fi
+              
+              # Add newline if list isn't empty
+              if [ -n "$ALL_IDS" ]; then
+                ALL_IDS="${ALL_IDS}\n${IDS_PAGE}"
+              else
+                ALL_IDS="$IDS_PAGE"
+              fi
+              PAGE=$((PAGE + 1))
+            done
+          fi
+
+          # Validate final result
+          if [ -z "$ALL_IDS" ]; then
+            echo "❌ Error: Failed to fetch RoboForex IDs after all attempts"
             exit 1
           fi
-          
-          ID_COUNT=$(echo "$IDS_RAW" | wc -l)
-          echo "📊 Found $ID_COUNT client IDs"
-          
+
+          # Remove blank lines, sort, and deduplicate
+          ALL_IDS=$(echo -e "$ALL_IDS" | sed '/^$/d' | sort -u)
+          ID_COUNT=$(echo "$ALL_IDS" | wc -l)
+          echo "📊 Found $ID_COUNT client IDs in total"
+
+          # Pass to GitHub Environment
           echo "ID_LIST<<EOF" >> $GITHUB_ENV
-          echo "$IDS_RAW" >> $GITHUB_ENV
+          echo "$ALL_IDS" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
       - name: Update the text file
@@ -64,10 +91,14 @@ jobs:
           
           echo "📝 Updating $FILE_PATH..."
           
-          # Extract everything BEFORE "Auto Update Roboforex Clients:"
-          head -n $(grep -n "Auto Update Roboforex Clients:" $FILE_PATH | cut -d: -f1) $FILE_PATH > temp.txt
+          # Extract everything BEFORE the "Auto Update Roboforex Clients:" line (preserves CXM, VALETAX, etc.)
+          awk '/Auto Update Roboforex Clients:/ {exit} {print}' $FILE_PATH > temp.txt
           
-          # Add the new IDs with timestamp
+          # Ensure there is a newline at the end of the preserved section
+          echo "" >> temp.txt
+          
+          # Append the new block with fresh timestamp and IDs
+          echo "Auto Update Roboforex Clients:" >> temp.txt
           echo "" >> temp.txt
           echo "# Last updated: $TIMESTAMP" >> temp.txt
           echo "${{ env.ID_LIST }}" >> temp.txt
