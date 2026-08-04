@@ -22,6 +22,12 @@ jobs:
           
           IDS_RAW=$(curl -s "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=$API_KEY" | grep -o 'id="[0-9]*"' | sed 's/id="//;s/"//')
           
+          # Error handling: check if the API call succeeded
+          if [ -z "$IDS_RAW" ]; then
+            echo "Error: Failed to fetch RoboForex IDs from API"
+            exit 1
+          fi
+          
           echo "ID_LIST<<EOF" >> $GITHUB_ENV
           echo "$IDS_RAW" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
@@ -35,13 +41,10 @@ jobs:
             exit 1
           fi
           
-          # The 'd' command below permanently DELETES the old IDs (removes blank lines)
-          sed -i '/Auto Update Roboforex Clients:/,$ {
-            /Auto Update Roboforex Clients:/b
-            d
-          }' $FILE_PATH
+          # Delete everything after the marker line (simpler and clearer)
+          sed -i '/Auto Update Roboforex Clients:/q' $FILE_PATH
           
-          # Add the new IDs on the next line (cleaning up the whitespace)
+          # Add the new IDs on the next line
           echo "" >> $FILE_PATH
           echo "${{ env.ID_LIST }}" >> $FILE_PATH
 
