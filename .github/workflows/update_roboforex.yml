@@ -19,7 +19,7 @@ jobs:
         run: |
           API_KEY="${{ secrets.ROBOFOREX_API_KEY }}"
           
-          IDS_RAW=$(curl -s "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=$API_KEY" | grep -o 'id="[0-9]*"' | sed 's/id="//;s/"//')
+          IDS_RAW=$(curl -s -H "User-Agent: GitHub-Actions-Bot" "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=$API_KEY" | grep -o 'id="[0-9]*"' | sed 's/id="//;s/"//')
           
           # Error handling: check if the API call succeeded
           if [ -z "$IDS_RAW" ]; then
