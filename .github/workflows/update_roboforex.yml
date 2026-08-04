@@ -18,14 +18,35 @@ jobs:
         id: get_ids
         run: |
           API_KEY="${{ secrets.ROBOFOREX_API_KEY }}"
+          MAX_RETRIES=3
+          RETRY_COUNT=0
           
-          IDS_RAW=$(curl -s -H "User-Agent: GitHub-Actions-Bot" "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=$API_KEY" | grep -o 'id="[0-9]*"' | sed 's/id="//;s/"//')
+          echo "🔄 Starting RoboForex API fetch..."
           
-          # Error handling: check if the API call succeeded
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            echo "Attempt $((RETRY_COUNT + 1))/$MAX_RETRIES..."
+            
+            IDS_RAW=$(curl -s -H "User-Agent: GitHub-Actions-Bot" "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=$API_KEY" | grep -o 'id="[0-9]*"' | sed 's/id="//;s/"//')
+            
+            if [ -n "$IDS_RAW" ]; then
+              echo "✅ Successfully fetched IDs"
+              break
+            fi
+            
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+              echo "⏳ Attempt failed, retrying in 5 seconds..."
+              sleep 5
+            fi
+          done
+          
           if [ -z "$IDS_RAW" ]; then
-            echo "Error: Failed to fetch RoboForex IDs from API"
+            echo "❌ Error: Failed to fetch RoboForex IDs after $MAX_RETRIES attempts"
             exit 1
           fi
+          
+          ID_COUNT=$(echo "$IDS_RAW" | wc -l)
+          echo "📊 Found $ID_COUNT client IDs"
           
           echo "ID_LIST<<EOF" >> $GITHUB_ENV
           echo "$IDS_RAW" >> $GITHUB_ENV
@@ -34,21 +55,42 @@ jobs:
       - name: Update the text file
         run: |
           FILE_PATH="ManusNexus.txt"
+          TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
           
           if [ ! -f "$FILE_PATH" ]; then
             echo "Error: $FILE_PATH does not exist!"
             exit 1
           fi
           
-          # Delete everything after the marker line (simpler and clearer)
+          echo "📝 Updating $FILE_PATH..."
+          
+          # Delete everything after the marker line
           sed -i '/Auto Update Roboforex Clients:/q' $FILE_PATH
           
-          # Add the new IDs on the next line
+          # Add the new IDs with timestamp
           echo "" >> $FILE_PATH
+          echo "# Last updated: $TIMESTAMP" >> $FILE_PATH
           echo "${{ env.ID_LIST }}" >> $FILE_PATH
+          
+          echo "✅ File updated successfully"
 
       - name: Commit changes
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "Auto-update Roboforex client IDs"
+          commit_message: "Auto-update Roboforex client IDs - $(date '+%Y-%m-%d %H:%M:%S')"
           file_pattern: ManusNexus.txt
+
+      - name: Notify on success
+        if: success()
+        run: |
+          echo "✅ Workflow completed successfully!"
+          echo "📊 Updated Roboforex client IDs list"
+          echo "🔗 View file: https://github.com/thefool-ea/users/blob/main/ManusNexus.txt"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "❌ Workflow failed!"
+          echo "⚠️ RoboForex API update did not complete"
+          echo "🔗 Check logs: https://github.com/thefool-ea/users/actions"
+          exit 1
