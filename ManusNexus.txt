@@ -1,4 +1,4 @@
-Demo Accounts
+Demo Accounts:
 68333501
 68338207
 248031
@@ -7,7 +7,7 @@ Demo Accounts
 
 /////////////
 Live Accounts or Paid
-CVHZZ
+CVHZZ:
 37328379
 37385539
 37385512
@@ -27,12 +27,14 @@ CVHZZ
 37381188
 37371304
 
-CXM
+CXM:
 628114
 743742
 
-VALETAX
+VALETAX:
 471053332
 
-Shomex
+Shomex:
 37384744
+
+Auto Update Roboforex Clients:
