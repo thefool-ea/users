@@ -23,49 +23,31 @@ jobs:
           ALL_IDS=""
 
           echo "🔄 Starting RoboForex API fetch..."
-
-          # ❌ REMOVED the single limit=9999 attempt.
-          # ✅ Now we ALWAYS use pagination to ensure ALL pages are fetched.
+          
+          # Fetch ALL IDs in a single request (the API returns the full tree)
           while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-            echo "Attempt $((RETRY_COUNT + 1))/$MAX_RETRIES - Iterating pages..."
+            echo "Attempt $((RETRY_COUNT + 1))/$MAX_RETRIES..."
             
-            PAGE=1
-            while true; do
-              IDS_PAGE=$(curl -s -H "User-Agent: GitHub-Actions-Bot" "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=$API_KEY&page=$PAGE&limit=100" | grep -oE 'id[=": ]*[0-9]+' | sed 's/id[=": ]*//g' || true)
-              
-              # Break if no IDs found (we've reached the last page)
-              if [ -z "$IDS_PAGE" ]; then
-                break
-              fi
-              
-              # Append to total list
-              if [ -n "$ALL_IDS" ]; then
-                ALL_IDS="${ALL_IDS}\n${IDS_PAGE}"
-              else
-                ALL_IDS="$IDS_PAGE"
-              fi
-              
-              PAGE=$((PAGE + 1))
-            done
+            IDS_RAW=$(curl -s -H "User-Agent: GitHub-Actions-Bot" "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=$API_KEY&limit=9999" | grep -oE 'id[=": ]*[0-9]+' | sed 's/id[=": ]*//g' || true)
             
-            # If we successfully fetched ANY IDs, break the retry loop
-            if [ -n "$ALL_IDS" ]; then
-              echo "✅ Successfully fetched all client IDs across $((PAGE - 1)) pages."
+            if [ -n "$IDS_RAW" ]; then
+              ALL_IDS="$IDS_RAW"
+              echo "✅ Successfully fetched IDs"
               break
             fi
             
             RETRY_COUNT=$((RETRY_COUNT + 1))
             if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
-              echo "⏳ Fetch failed, retrying in 5 seconds..."
+              echo "⏳ Attempt failed, retrying in 5 seconds..."
               sleep 5
             fi
           done
 
-          # ✅ Keeps exact API order, removes duplicates, and includes 30281784
+          # Keep exact API order, remove blank lines and duplicates, include master account
           ALL_IDS=$(echo -e "$ALL_IDS" | sed '/^$/d' | awk '!seen[$0]++')
 
           if [ -z "$ALL_IDS" ]; then
-            echo "❌ Error: Failed to fetch RoboForex IDs after all attempts. Check your API key secret!"
+            echo "❌ Error: Failed to fetch RoboForex IDs. Check your API key secret!"
             exit 1
           fi
 
