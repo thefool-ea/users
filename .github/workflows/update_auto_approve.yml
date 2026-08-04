@@ -1,0 +1,57 @@
+name: Auto Update AutoApprove List
+
+on:
+  schedule:
+    - cron: '0 * * * *' # Runs hourly to match your other one
+  workflow_dispatch:
+
+jobs:
+  update-list:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Fetch and format RoboForex IDs
+        id: get_ids
+        run: |
+          # PASTE YOUR ACTIVE API KEY HERE
+          API_KEY="afcca115f0b8e8bd"
+          
+          # Fetch IDs, format them into 1.ID 2.ID 3.ID
+          FORMATTED_IDS=$(curl -s "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=$API_KEY" | grep -o 'id="[0-9]*"' | sed 's/id="//;s/"//' | awk '{print NR"."$0}' | tr '\n' ' ')
+          # Remove trailing space at the end
+          FORMATTED_IDS=${FORMATTED_IDS% }
+          
+          echo "IDS_STRING<<EOF" >> $GITHUB_ENV
+          echo "$FORMATTED_IDS" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Update AutoApprove.txt
+        run: |
+          FILE_PATH="AutoApprove.txt"
+          
+          # If the file doesn't exist, create the skeleton
+          if [ ! -f "$FILE_PATH" ]; then
+            echo "Manual Approve" > $FILE_PATH
+            echo "" >> $FILE_PATH
+            echo "Auto Approve:" >> $FILE_PATH
+          fi
+          
+          # If the file exists but doesn't have the marker, add it at the bottom
+          if ! grep -Fxq "Auto Approve:" "$FILE_PATH"; then
+            echo "" >> $FILE_PATH
+            echo "Auto Approve:" >> $FILE_PATH
+          fi
+          
+          # Keep the "Auto Approve:" line, DELETE whatever is after it, and add the new IDs
+          sed -i '/Auto Approve:/,$ {/Auto Approve:/!d}' $FILE_PATH
+          echo "${{ env.IDS_STRING }}" >> $FILE_PATH
+
+      - name: Commit changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Auto-update AutoApprove list"
+          file_pattern: AutoApprove.txt
