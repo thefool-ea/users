@@ -24,11 +24,12 @@ jobs:
 
           echo "🔄 Starting RoboForex API fetch..."
           
-          # Attempt 1: Fetch all at once with a high limit
+          # Safety switch: using grep instead of jq. jq crashed with exit code 5 (memory) 
+          # trying to parse HTML error pages. This grep catches both JSON and HTML IDs safely.
           while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
             echo "Attempt $((RETRY_COUNT + 1))/$MAX_RETRIES..."
-            # NOTE: We use jq to deeply walk the JSON tree and extract every numeric id found
-            IDS_RAW=$(curl -s -H "User-Agent: GitHub-Actions-Bot" "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=$API_KEY&limit=9999" | jq -r '.. | .id? // empty')
+            
+            IDS_RAW=$(curl -s -H "User-Agent: GitHub-Actions-Bot" "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=$API_KEY&limit=9999" | grep -oE 'id[=": ]*[0-9]+' | sed 's/[=": ]*//g' || true)
             
             if [ -n "$IDS_RAW" ]; then
               ALL_IDS="$IDS_RAW"
@@ -43,12 +44,12 @@ jobs:
             fi
           done
 
-          # Attempt 2: Fallback to pagination if the limit didn't work
+          # Fallback: Pagination loop if the first batch didn't work
           if [ -z "$ALL_IDS" ]; then
-            echo "⚠️ High limit failed. Falling back to pagination loop..."
+            echo "⚠️ Attempt 1 failed. Trying pagination loop with grep..."
             PAGE=1
             while true; do
-              IDS_PAGE=$(curl -s -H "User-Agent: GitHub-Actions-Bot" "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=$API_KEY&page=$PAGE&limit=100" | jq -r '.. | .id? // empty')
+              IDS_PAGE=$(curl -s -H "User-Agent: GitHub-Actions-Bot" "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=$API_KEY&page=$PAGE&limit=100" | grep -oE 'id[=": ]*[0-9]+' | sed 's/[=": ]*//g' || true)
               
               if [ -z "$IDS_PAGE" ]; then
                 break
@@ -63,13 +64,15 @@ jobs:
             done
           fi
 
-          # Validate and deduplicate the final list
+          # Clean up: Remove the parent account ID (30281784) if accidentally grabbed, and deduplicate
+          ALL_IDS=$(echo -e "$ALL_IDS" | sed '/^30281784$/d' | sed '/^$/d' | sort -u)
+
+          # Validate final result
           if [ -z "$ALL_IDS" ]; then
-            echo "❌ Error: Failed to fetch RoboForex IDs after all attempts"
+            echo "❌ Error: Failed to fetch RoboForex IDs after all attempts. Double-check your GitHub Secret!"
             exit 1
           fi
-          
-          ALL_IDS=$(echo -e "$ALL_IDS" | sed '/^$/d' | sort -u)
+
           ID_COUNT=$(echo "$ALL_IDS" | wc -l)
           echo "📊 Found $ID_COUNT client IDs in total"
 
@@ -89,10 +92,10 @@ jobs:
           
           echo "📝 Updating $FILE_PATH..."
           
-          # Preserve everything above the "Auto Update" section (CXM, VALETAX, PAID, etc.)
+          # Keep everything above "Auto Update" (preserves CXM, VALETAX, PAID, etc.)
           awk '/Auto Update Roboforex Clients:/ {exit} {print}' $FILE_PATH > temp.txt
           
-          # Append the new Auto Update block with fresh data
+          # Append fresh update block
           echo "" >> temp.txt
           echo "Auto Update Roboforex Clients:" >> temp.txt
           echo "" >> temp.txt
@@ -118,4 +121,6 @@ jobs:
         if: failure()
         run: |
           echo "❌ Workflow failed!"
+          echo "⚠️ RoboForex API update did not complete"
+          echo "🔗 Check logs: https://github.com/thefool-ea/users/actions"
           exit 1
