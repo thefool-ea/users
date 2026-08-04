@@ -2,9 +2,7 @@ name: Auto Update Roboforex Clients
 
 on:
   schedule:
-    # 🛑 SUGGESTED CHANGE: To stop getting 13-ID stubs, use */10. 
-    # If you MUST keep 1 minute, change back to '* * * * *'.
-    - cron: '*/10 * * * *'
+    - cron: '* * * * *'
   workflow_dispatch:
 
 jobs:
@@ -27,10 +25,8 @@ jobs:
           echo "🔄 Starting safe paginated fetch..."
           
           while true; do
-            # Fetch current page
             IDS_PAGE=$(curl -s -H "User-Agent: GitHub-Actions-Bot" "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=$API_KEY&page=$PAGE&limit=100" | grep -oE 'id[=": ]*[0-9]+' | sed 's/id[=": ]*//g' || true)
             
-            # SAFETY BREAK: If empty OR if it's the EXACT same list as the last page
             if [ -z "$IDS_PAGE" ] || [ "$IDS_PAGE" = "$PREV_IDS" ]; then
               echo "✅ Reached the end of the list after $((PAGE - 1)) pages."
               break
@@ -46,7 +42,6 @@ jobs:
             PAGE=$((PAGE + 1))
           done
 
-          # Remove blank lines, keep exact API order, and include master account 30281784
           ALL_IDS=$(echo -e "$ALL_IDS" | sed '/^$/d' | awk '!seen[$0]++')
 
           if [ -z "$ALL_IDS" ]; then
@@ -60,8 +55,6 @@ jobs:
           echo "ID_LIST<<EOF" >> $GITHUB_ENV
           echo "$ALL_IDS" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
-          
-          # Export the count so the next step can read it
           echo "ID_COUNT=$ID_COUNT" >> $GITHUB_ENV
 
       - name: Update the text file
@@ -74,17 +67,20 @@ jobs:
             exit 1
           fi
           
-          # 🛡️ SAFETY GUARD: Do NOT update if the API gave us 14 IDs or less (require at least 15)
+          # 🛡️ SAFETY GUARD: Do NOT update if the API gave us 14 IDs or less
           if [ "$ID_COUNT" -le 14 ]; then
-            echo "⏭️ Skipping file update: Only $ID_COUNT IDs found (expected at least 15). The API returned an incomplete list (Roboforex is rate-limiting you)."
+            echo "⏭️ Skipping file update: Only $ID_COUNT IDs found (expected at least 15). The API returned an incomplete list."
             echo "✅ The previous full list in ManusNexus.txt is completely safe."
             exit 0
           fi
           
           echo "📝 Updating $FILE_PATH..."
           
-          # Preserve everything above "Auto Update" (Includes CXM, VALETAX, PAID, and your manual IDs)
+          # Preserve everything above "Auto Update"
           awk '/Auto Update Roboforex Clients:/ {exit} {print}' $FILE_PATH > temp.txt
+          
+          # 🚨 FIX HERE: Strip out all trailing blank lines from the preserved section so there is no huge gap
+          perl -i -0777 -pe 's/\n*\z//' temp.txt
           
           # Append new block
           echo "" >> temp.txt
