@@ -19,30 +19,49 @@ jobs:
         run: |
           API_KEY="${{ secrets.ROBOFOREX_API_KEY }}"
           MASTER_ID="30281784"
-          TEMP_FILE="raw_response.txt"
-          CLEAN_IDS="clean_ids.txt"
-          touch "$CLEAN_IDS"
+          ALL_IDS_FILE="all_ids.txt"
+          touch "$ALL_IDS_FILE"
           
-          echo "🔄 Fetching all clients..."
+          PAGE=1
+          echo "🔄 Starting deep fetch (paginated)..."
           
-          # Fetch using the most reliable endpoint
-          curl -s -H "User-Agent: Mozilla/5.0" "https://my.roboforex.com/api/partners/tree?account_id=$MASTER_ID&api_key=$API_KEY&limit=5000" > "$TEMP_FILE"
-          
-          # Extract IDs and CLEAN them:
-          # 1. grep finds the ID pattern
-          # 2. tr -d '\r' removes hidden Windows-style line breaks (the "huge space" cause)
-          # 3. grep -oE '[0-9]+' extracts just the numbers
-          grep -oE 'id[=": ]*[0-9]+' "$TEMP_FILE" | tr -d '\r' | grep -oE '[0-9]+' >> "$CLEAN_IDS" || true
-          
-          # Final processing:
-          # - Add Master ID
-          # - Remove duplicates
-          # - Remove ALL blank lines
-          # - Sort numerically
-          (echo "$MASTER_ID"; cat "$CLEAN_IDS") | tr -d '\r' | sed '/^$/d' | sort -u -n > final_ids.txt
+          while true; do
+            echo "Fetching page $PAGE..."
+            # Fetch current page
+            RESPONSE=$(curl -s -H "User-Agent: Mozilla/5.0" "https://my.roboforex.com/api/partners/tree?account_id=$MASTER_ID&api_key=$API_KEY&page=$PAGE&limit=100")
+            
+            # Extract IDs and CLEAN them immediately
+            IDS_PAGE=$(echo "$RESPONSE" | grep -oE 'id[=": ]*[0-9]+' | tr -d '\r' | grep -oE '[0-9]+' || true)
+            
+            if [ -z "$IDS_PAGE" ]; then
+              echo "✅ No more IDs found after page $((PAGE - 1))."
+              break
+            fi
+            
+            # Check if we've seen these IDs before (end of list)
+            FIRST_ID=$(echo "$IDS_PAGE" | head -n 1)
+            if grep -qF "$FIRST_ID" "$ALL_IDS_FILE" 2>/dev/null && [ $PAGE -gt 1 ]; then
+              echo "✅ Reached the end of unique IDs."
+              break
+            fi
+            
+            echo "$IDS_PAGE" >> "$ALL_IDS_FILE"
+            
+            # Safety break for very large lists
+            if [ $PAGE -ge 100 ]; then break; fi
+            PAGE=$((PAGE + 1))
+          done
+
+          # Final cleaning:
+          # 1. Add Master ID
+          # 2. Remove \r (huge spaces)
+          # 3. Remove blank lines
+          # 4. Remove duplicates
+          # 5. Sort numerically
+          (echo "$MASTER_ID"; cat "$ALL_IDS_FILE") | tr -d '\r' | sed '/^$/d' | sort -u -n > final_ids.txt
           
           ID_COUNT=$(wc -l < final_ids.txt)
-          echo "📊 Found $ID_COUNT unique IDs"
+          echo "📊 Total unique IDs found: $ID_COUNT"
           echo "ID_COUNT=$ID_COUNT" >> $GITHUB_ENV
 
       - name: Update the text file
@@ -50,20 +69,19 @@ jobs:
           FILE_PATH="ManusNexus.txt"
           TIMESTAMP=$(TZ='Asia/Bangkok' date '+%Y-%m-%d %I:%M:%S %p')
           
-          # Create file if it doesn't exist
           if [ ! -f "$FILE_PATH" ]; then
             echo "Auto Update Roboforex Clients:" > "$FILE_PATH"
           fi
           
-          # CLEAN THE FILE FIRST: Remove any existing \r characters from the whole file
+          # Clean existing file of any \r characters
           tr -d '\r' < "$FILE_PATH" > temp_clean.txt && mv temp_clean.txt "$FILE_PATH"
           
           echo "📝 Updating $FILE_PATH..."
           
-          # Delete everything from the "Auto Update" marker to the end
+          # Strip the old auto-update block
           sed -i '/Auto Update Roboforex Clients:/,$d' "$FILE_PATH"
           
-          # Append the new clean section
+          # Append the clean, tightly packed list
           {
             echo "Auto Update Roboforex Clients:"
             echo ""
@@ -76,5 +94,5 @@ jobs:
       - name: Commit changes
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "Auto-update: Found ${{ env.ID_COUNT }} clients (Clean Formatting)"
+          commit_message: "Auto-update: Found ${{ env.ID_COUNT }} clients (Formatting Fixed)"
           file_pattern: ManusNexus.txt
