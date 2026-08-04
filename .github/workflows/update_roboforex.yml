@@ -76,17 +76,15 @@ jobs:
           
           echo "📝 Updating $FILE_PATH..."
           
-          # ✅ EXACTLY PRESERVES YOUR MANUAL FORMATTING. 
-          # It copies everything above "Auto Update Roboforex Clients:" verbatim.
+          # ✅ EXACTLY PRESERVES YOUR MANUAL FORMATTING
           awk '/Auto Update Roboforex Clients:/ {exit} {print}' $FILE_PATH > temp.txt
           
-          # Remove trailing blank lines to ensure clean spacing
+          # Strip trailing blank lines to prevent spacing issues
           perl -i -0777 -pe 's/\n*\z//' temp.txt
           
-          # Append the new updated block below your manual spacing
+          # ✅ FIXED HERE: Removed the extra blank line between the header and timestamp
           echo "" >> temp.txt
           echo "Auto Update Roboforex Clients:" >> temp.txt
-          echo "" >> temp.txt
           echo "# Last updated: $TIMESTAMP" >> temp.txt
           echo "${{ env.ID_LIST }}" >> temp.txt
           
