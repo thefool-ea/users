@@ -17,10 +17,9 @@ jobs:
       - name: Fetch and parse RoboForex IDs
         id: get_ids
         run: |
-          # THIS IS YOUR REVOKED KEY, CHANGE IT WHEN YOU GET A NEW ONE
+          # REPLACE WITH YOUR ACTIVE API KEY
           API_KEY="afcca115f0b8e8bd"
           
-          # Safely fetch IDs using a compatible extraction method
           IDS_RAW=$(curl -s "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=$API_KEY" | grep -o 'id="[0-9]*"' | sed 's/id="//;s/"//')
           
           echo "ID_LIST<<EOF" >> $GITHUB_ENV
@@ -31,20 +30,18 @@ jobs:
         run: |
           FILE_PATH="ManusNexus.txt"
           
-          # Check if the file exists so it doesn't crash
           if [ ! -f "$FILE_PATH" ]; then
             echo "Error: $FILE_PATH does not exist!"
             exit 1
           fi
           
-          # Add a "set +e" to prevent crashing if the marker isn't found yet
-          set +e
+          # The 'd' command below permanently DELETES the old IDs (removes blank lines)
           sed -i '/Auto Update Roboforex Clients:/,$ {
             /Auto Update Roboforex Clients:/b
-            s/.*//g
+            d
           }' $FILE_PATH
           
-          # Add a new line and the new IDs to the bottom of the file
+          # Add the new IDs on the next line (cleaning up the whitespace)
           echo "" >> $FILE_PATH
           echo "${{ env.ID_LIST }}" >> $FILE_PATH
 
