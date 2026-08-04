@@ -62,8 +62,9 @@ jobs:
             done
           fi
 
-          # Clean up: Remove the parent account ID (if accidentally grabbed) and deduplicate
-          ALL_IDS=$(echo -e "$ALL_IDS" | sed '/^30281784$/d' | sed '/^$/d' | sort -u)
+          # 🚨 CHANGED HERE: Removed 'sort -u' and replaced with 'awk'.
+          # This keeps duplicates out, but PRESERVES the exact API order.
+          ALL_IDS=$(echo -e "$ALL_IDS" | sed '/^$/d' | awk '!seen[$0]++')
 
           if [ -z "$ALL_IDS" ]; then
             echo "❌ Error: Failed to fetch RoboForex IDs after all attempts. Check your API key secret!"
@@ -80,7 +81,6 @@ jobs:
       - name: Update the text file
         run: |
           FILE_PATH="ManusNexus.txt"
-          # CHANGED: %I for 12-hour clock, %p for AM/PM
           TIMESTAMP=$(TZ='Asia/Bangkok' date '+%Y-%m-%d %I:%M:%S %p')
           
           if [ ! -f "$FILE_PATH" ]; then
