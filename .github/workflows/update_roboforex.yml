@@ -24,10 +24,11 @@ jobs:
 
           echo "🔄 Starting RoboForex API fetch..."
           
-          # Attempt 1: Try to fetch all at once with a massive limit
+          # Attempt 1: Fetch all at once with a high limit
           while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
             echo "Attempt $((RETRY_COUNT + 1))/$MAX_RETRIES..."
-            IDS_RAW=$(curl -s -H "User-Agent: GitHub-Actions-Bot" "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=$API_KEY&limit=9999" | grep -o 'id="[0-9]*"' | sed 's/id="//;s/"//')
+            # NOTE: We use jq to deeply walk the JSON tree and extract every numeric id found
+            IDS_RAW=$(curl -s -H "User-Agent: GitHub-Actions-Bot" "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=$API_KEY&limit=9999" | jq -r '.. | .id? // empty')
             
             if [ -n "$IDS_RAW" ]; then
               ALL_IDS="$IDS_RAW"
@@ -42,18 +43,17 @@ jobs:
             fi
           done
 
-          # Attempt 2: If high limit didn't work, pagination loop safety net
+          # Attempt 2: Fallback to pagination if the limit didn't work
           if [ -z "$ALL_IDS" ]; then
             echo "⚠️ High limit failed. Falling back to pagination loop..."
             PAGE=1
             while true; do
-              IDS_PAGE=$(curl -s -H "User-Agent: GitHub-Actions-Bot" "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=$API_KEY&page=$PAGE&limit=100" | grep -o 'id="[0-9]*"' | sed 's/id="//;s/"//')
+              IDS_PAGE=$(curl -s -H "User-Agent: GitHub-Actions-Bot" "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=$API_KEY&page=$PAGE&limit=100" | jq -r '.. | .id? // empty')
               
               if [ -z "$IDS_PAGE" ]; then
                 break
               fi
               
-              # Add newline if list isn't empty
               if [ -n "$ALL_IDS" ]; then
                 ALL_IDS="${ALL_IDS}\n${IDS_PAGE}"
               else
@@ -63,18 +63,16 @@ jobs:
             done
           fi
 
-          # Validate final result
+          # Validate and deduplicate the final list
           if [ -z "$ALL_IDS" ]; then
             echo "❌ Error: Failed to fetch RoboForex IDs after all attempts"
             exit 1
           fi
-
-          # Remove blank lines, sort, and deduplicate
+          
           ALL_IDS=$(echo -e "$ALL_IDS" | sed '/^$/d' | sort -u)
           ID_COUNT=$(echo "$ALL_IDS" | wc -l)
           echo "📊 Found $ID_COUNT client IDs in total"
 
-          # Pass to GitHub Environment
           echo "ID_LIST<<EOF" >> $GITHUB_ENV
           echo "$ALL_IDS" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
@@ -91,21 +89,17 @@ jobs:
           
           echo "📝 Updating $FILE_PATH..."
           
-          # Extract everything BEFORE the "Auto Update Roboforex Clients:" line (preserves CXM, VALETAX, etc.)
+          # Preserve everything above the "Auto Update" section (CXM, VALETAX, PAID, etc.)
           awk '/Auto Update Roboforex Clients:/ {exit} {print}' $FILE_PATH > temp.txt
           
-          # Ensure there is a newline at the end of the preserved section
+          # Append the new Auto Update block with fresh data
           echo "" >> temp.txt
-          
-          # Append the new block with fresh timestamp and IDs
           echo "Auto Update Roboforex Clients:" >> temp.txt
           echo "" >> temp.txt
           echo "# Last updated: $TIMESTAMP" >> temp.txt
           echo "${{ env.ID_LIST }}" >> temp.txt
           
-          # Replace original file
           mv temp.txt $FILE_PATH
-          
           echo "✅ File updated successfully"
 
       - name: Commit changes
@@ -118,13 +112,10 @@ jobs:
         if: success()
         run: |
           echo "✅ Workflow completed successfully!"
-          echo "📊 Updated Roboforex client IDs list"
           echo "🔗 View file: https://github.com/thefool-ea/users/blob/main/ManusNexus.txt"
 
       - name: Notify on failure
         if: failure()
         run: |
           echo "❌ Workflow failed!"
-          echo "⚠️ RoboForex API update did not complete"
-          echo "🔗 Check logs: https://github.com/thefool-ea/users/actions"
           exit 1
