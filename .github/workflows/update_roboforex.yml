@@ -2,7 +2,8 @@ name: Auto Update Roboforex Clients
 
 on:
   schedule:
-    - cron: '0 * * * *'
+    # CHANGE: Runs every minute
+    - cron: '* * * * *'
   workflow_dispatch:
 
 jobs:
