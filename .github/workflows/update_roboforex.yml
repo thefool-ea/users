@@ -17,8 +17,8 @@ jobs:
       - name: Fetch and parse RoboForex IDs
         id: get_ids
         run: |
-          # REPLACE 'YOUR_NEW_API_KEY' WITH YOUR NEW KEY BELOW
-          IDs=$(curl -s "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=YOUR_NEW_API_KEY" | grep -oP 'id="\K\d+')
+          # HERE IS WHERE THE API KEY SITS  👇
+          IDs=$(curl -s "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=afcca115f0b8e8bd" | grep -oP 'id="\K\d+')
           
           echo "ID_LIST<<EOF" >> $GITHUB_ENV
           echo "$IDs" >> $GITHUB_ENV
@@ -44,3 +44,4 @@ jobs:
         with:
           commit_message: "Auto-update Roboforex client IDs"
           file_pattern: users/ManusNexus.txt
+          
