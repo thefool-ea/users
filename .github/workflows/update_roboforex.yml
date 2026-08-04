@@ -64,13 +64,16 @@ jobs:
           
           echo "📝 Updating $FILE_PATH..."
           
-          # Delete everything after the marker line
-          sed -i '/Auto Update Roboforex Clients:/q' $FILE_PATH
+          # Extract everything BEFORE "Auto Update Roboforex Clients:"
+          head -n $(grep -n "Auto Update Roboforex Clients:" $FILE_PATH | cut -d: -f1) $FILE_PATH > temp.txt
           
           # Add the new IDs with timestamp
-          echo "" >> $FILE_PATH
-          echo "# Last updated: $TIMESTAMP" >> $FILE_PATH
-          echo "${{ env.ID_LIST }}" >> $FILE_PATH
+          echo "" >> temp.txt
+          echo "# Last updated: $TIMESTAMP" >> temp.txt
+          echo "${{ env.ID_LIST }}" >> temp.txt
+          
+          # Replace original file
+          mv temp.txt $FILE_PATH
           
           echo "✅ File updated successfully"
 
