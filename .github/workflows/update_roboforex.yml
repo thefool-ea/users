@@ -59,7 +59,7 @@ jobs:
 
       - name: Update the text file
         run: |
-          FILE_PATH="ManusNexus.txt"
+          FILE_PATH="Golden_Mirror_Grid.txt"
           TIMESTAMP=$(TZ='Asia/Bangkok' date '+%Y-%m-%d %I:%M:%S %p')
           
           if [ ! -f "$FILE_PATH" ]; then
@@ -70,7 +70,7 @@ jobs:
           # 🛡️ SAFETY GUARD: Do NOT update if the API gave us 14 IDs or less
           if [ "$ID_COUNT" -le 14 ]; then
             echo "⏭️ Skipping file update: Only $ID_COUNT IDs found (expected at least 15). The API returned an incomplete list."
-            echo "✅ The previous full list in ManusNexus.txt is completely safe."
+            echo "✅ The previous full list in Golden_Mirror_Grid.txt is completely safe."
             exit 0
           fi
           
@@ -95,13 +95,13 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "Auto-update Roboforex client IDs - $(date '+%Y-%m-%d %I:%M:%S %p')"
-          file_pattern: ManusNexus.txt
+          file_pattern: Golden_Mirror_Grid.txt
 
       - name: Notify on success
         if: success()
         run: |
           echo "✅ Workflow completed successfully!"
-          echo "🔗 View file: https://github.com/thefool-ea/users/blob/main/ManusNexus.txt"
+          echo "🔗 View file: https://thefool-ea.github.io/users/Golden_Mirror_Grid.txt"
 
       - name: Notify on failure
         if: failure()
