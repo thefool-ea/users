@@ -10,92 +10,118 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Fetch and parse RoboForex IDs
         id: get_ids
+        shell: bash
+        env:
+          ROBOFOREX_API_KEY: ${{ secrets.ROBOFOREX_API_KEY }}
         run: |
-          API_KEY="${{ secrets.ROBOFOREX_API_KEY }}"
+          set -euo pipefail
+
+          if [ -z "${ROBOFOREX_API_KEY:-}" ]; then
+            echo "❌ ROBOFOREX_API_KEY is missing from GitHub secrets."
+            exit 1
+          fi
+
           ALL_IDS=""
           PAGE=1
           PREV_IDS=""
 
           echo "🔄 Starting safe paginated fetch..."
-          
+
           while true; do
-            IDS_PAGE=$(curl -s -H "User-Agent: GitHub-Actions-Bot" "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=$API_KEY&page=$PAGE&limit=100" | grep -oE 'id[=": ]*[0-9]+' | sed 's/id[=": ]*//g' || true)
-            
-            if [ -z "$IDS_PAGE" ] || [ "$IDS_PAGE" = "$PREV_IDS" ]; then
+            BODY=$(curl -fsSL --retry 3 --retry-delay 2 \
+              -H "User-Agent: GitHub-Actions-Bot" \
+              "https://my.roboforex.com/api/partners/tree?account_id=30281784&api_key=${ROBOFOREX_API_KEY}&page=${PAGE}&limit=100")
+
+            IDS_PAGE=$(printf '%s\n' "$BODY" \
+              | grep -oE 'id[=" :]*[0-9]+' \
+              | sed -E 's/.*id[=" :]*//; s/[^0-9].*$//' \
+              | awk 'NF' \
+              | sort -u)
+
+            if [ -z "$IDS_PAGE" ]; then
+              echo "✅ No more IDs found on page ${PAGE}; assuming end of list."
+              break
+            fi
+
+            if [ "$IDS_PAGE" = "$PREV_IDS" ]; then
               echo "✅ Reached the end of the list after $((PAGE - 1)) pages."
               break
             fi
-            
+
             PREV_IDS="$IDS_PAGE"
+
             if [ -n "$ALL_IDS" ]; then
-              ALL_IDS="${ALL_IDS}\n${IDS_PAGE}"
+              ALL_IDS="${ALL_IDS}"$'\n'"${IDS_PAGE}"
             else
-              ALL_IDS="$IDS_PAGE"
+              ALL_IDS="${IDS_PAGE}"
             fi
-            
+
             PAGE=$((PAGE + 1))
           done
 
-          ALL_IDS=$(echo -e "$ALL_IDS" | sed '/^$/d' | awk '!seen[$0]++')
+          ALL_IDS=$(printf '%s\n' "$ALL_IDS" | sed '/^$/d' | awk '!seen[$0]++')
 
           if [ -z "$ALL_IDS" ]; then
-            echo "❌ Error: Failed to fetch RoboForex IDs. Check your API key!"
+            echo "❌ Error: Failed to fetch RoboForex IDs. Check your API key or endpoint response."
             exit 1
           fi
 
-          ID_COUNT=$(echo "$ALL_IDS" | wc -l)
-          echo "📊 Found $ID_COUNT client IDs in total"
+          ID_COUNT=$(printf '%s\n' "$ALL_IDS" | grep -c . || true)
+          echo "📊 Found ${ID_COUNT} client IDs in total"
 
-          echo "ID_LIST<<EOF" >> $GITHUB_ENV
-          echo "$ALL_IDS" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
-          echo "ID_COUNT=$ID_COUNT" >> $GITHUB_ENV
+          echo "ID_LIST<<EOF" >> "$GITHUB_ENV"
+          printf '%s\n' "$ALL_IDS" >> "$GITHUB_ENV"
+          echo "EOF" >> "$GITHUB_ENV"
+          echo "ID_COUNT=${ID_COUNT}" >> "$GITHUB_ENV"
 
-      - name: Update the text file
+      - name: Update approved.txt
+        shell: bash
         run: |
-          FILE_PATH="Golden_Mirror_Grid.txt"
+          set -euo pipefail
+
+          FILE_PATH="approved.txt"
           TIMESTAMP=$(TZ='Asia/Bangkok' date '+%Y-%m-%d %I:%M:%S %p')
-          
+
           if [ ! -f "$FILE_PATH" ]; then
-            echo "Error: $FILE_PATH does not exist!"
-            exit 1
+            echo "File $FILE_PATH does not exist; creating it."
+            : > "$FILE_PATH"
           fi
-          
-          # 🛡️ SAFETY GUARD: Do NOT update if the API gave us 14 IDs or less
-          if [ "$ID_COUNT" -le 14 ]; then
-            echo "⏭️ Skipping file update: Only $ID_COUNT IDs found (expected at least 15). The API returned an incomplete list."
-            echo "✅ The previous full list in Golden_Mirror_Grid.txt is completely safe."
+
+          if [ "${ID_COUNT:-0}" -le 14 ]; then
+            echo "⏭️ Skipping file update: Only ${ID_COUNT:-0} IDs found (expected at least 15)."
+            echo "✅ The previous full list in $FILE_PATH is kept intact."
             exit 0
           fi
-          
+
           echo "📝 Updating $FILE_PATH..."
-          
-          # Preserve everything above "Auto Update Roboforex Clients:"
-          awk '/Auto Update Roboforex Clients:/ {exit} {print}' $FILE_PATH > temp.txt
-          
-          # ✅ FIXED HERE: Collapses multiple trailing lines into 1 blank line
-          perl -i -0777 -pe 's/\n+\z/\n/' temp.txt
-          
-          # Append new block (this will add the second blank line)
-          echo "" >> temp.txt
-          echo "Auto Update Roboforex Clients:" >> temp.txt
-          echo "# Last updated: $TIMESTAMP" >> temp.txt
-          echo "${{ env.ID_LIST }}" >> temp.txt
-          
-          mv temp.txt $FILE_PATH
+
+          awk '/Auto Update Roboforex Clients:/ {exit} {print}' "$FILE_PATH" > temp.txt
+          perl -0pi -e 's/\n+\z/\n/' temp.txt
+
+          {
+            echo
+            echo "Auto Update Roboforex Clients:"
+            echo "# Last updated: $TIMESTAMP"
+            printf '%s\n' "${ID_LIST}"
+          } >> temp.txt
+
+          mv temp.txt "$FILE_PATH"
           echo "✅ File updated successfully"
 
       - name: Commit changes
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "Auto-update Roboforex client IDs - $(date '+%Y-%m-%d %I:%M:%S %p')"
-          file_pattern: Golden_Mirror_Grid.txt
+          commit_message: "Auto-update RoboForex client IDs - $(date '+%Y-%m-%d %I:%M:%S %p')"
+          file_pattern: approved.txt
 
       - name: Notify on success
         if: success()
