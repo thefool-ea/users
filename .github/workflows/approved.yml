@@ -1,4 +1,4 @@
-name: Auto Update Roboforex Clients
+name: Auto Approve
 
 on:
   schedule:
