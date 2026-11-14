@@ -66,7 +66,7 @@ PAID OR SPECIAL APPROVE:
 37359836
 
 Auto Update Roboforex Clients:
-# Last updated: 2026-11-14 04:55:22 PM
+# Last updated: 2026-11-15 04:10:57 AM
 30281784
 21581345
 37351120
@@ -158,5 +158,3 @@ Auto Update Roboforex Clients:
 37381597
 37396982
 52036536
-37346059
-37346983
